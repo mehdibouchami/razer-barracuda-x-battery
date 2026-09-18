@@ -2,7 +2,7 @@
 
 See your **Razer Barracuda X (2022)** battery level in the Windows tray while it's connected through the **2.4 GHz USB dongle**. Razer Synapse doesn't support this headset, and Windows only shows its battery over Bluetooth.
 
-- The tray icon shows the battery level (e.g. `70%`) in 10% steps like Razer's mobile app, colored green, yellow or red, in a pixel font that stays sharp at tray size
+- The tray icon shows the battery level in 10% steps (like Razer's mobile app), colored green, yellow or red
 - Hover the icon for the exact voltage, e.g. `Barracuda X: 70% (3.98 V)`
 - Updates every 30 seconds, and picks the headset back up within ~10 seconds after it was off or on Bluetooth; double-click the icon to refresh right away
 - Low-battery notification at 20%
@@ -25,6 +25,11 @@ Right-click the icon for Refresh, Start with Windows, and Exit.
 | `1532:0552` | Macronix | Implemented, untested |
 
 Check your dongle's ID in Device Manager, under the dongle's Properties > Details > Hardware IDs.
+
+## Troubleshooting
+
+- **The icon shows `--`:** the headset is off, connected over Bluetooth, or out of range. The battery level comes back within about 10 seconds after the headset reconnects to the dongle.
+- **Something else is wrong:** the app keeps a small log of connection changes in `%LOCALAPPDATA%\BarracudaBattery\log.txt` (paste that path into the File Explorer address bar). Attach it when you [open an issue](../../issues).
 
 ## How it works
 

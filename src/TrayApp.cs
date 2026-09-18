@@ -40,6 +40,7 @@ namespace BarracudaBattery
         int busy;
         bool lowWarned;
         int shownPercent = -1;
+        string lastLoggedState;
         DateTime nextPollUtc = DateTime.MaxValue; // set after the startup query completes
         IntPtr iconHandle;
 
@@ -58,7 +59,6 @@ namespace BarracudaBattery
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Refresh now", null, delegate { Refresh("manual"); });
             menu.Items.Add(startupItem);
-            menu.Items.Add("Open log folder", null, delegate { OpenUrl(Log.Folder); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("GitHub", null, delegate { OpenUrl(AppInfo.GitHubUrl); });
             if (AppInfo.SponsorUrl.Length > 0)
@@ -113,10 +113,19 @@ namespace BarracudaBattery
                 }
                 BarracudaProtocol.Trace = null;
 
-                if (reading != null)
-                    Log.Write(string.Format("{0}: {1}% ({2} mV)", trigger, reading.Percent, reading.Millivolts));
-                else
-                    Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
+                // Log only changes (connected / headset away / dongle missing...), with the raw exchange for
+                // failures, so the log stays small while still showing what happened. Queries never overlap,
+                // so lastLoggedState is only touched by one worker at a time.
+                string state = reading != null ? "connected" : status;
+                if (state != lastLoggedState)
+                {
+                    lastLoggedState = state;
+                    if (reading != null)
+                        Log.Write(string.Format("{0}: connected, {1}% ({2} mV)", trigger, reading.Percent,
+                            reading.Millivolts));
+                    else
+                        Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
+                }
 
                 ui.Post(delegate
                 {
@@ -170,8 +179,7 @@ namespace BarracudaBattery
 
         void SetIcon(BatteryReading r)
         {
-            // "100%" doesn't fit a 16 px icon; a full battery shows "100" alone
-            string label = r == null ? "--" : r.Percent >= 100 ? "100" : r.Percent + "%";
+            string label = r == null ? "--" : r.Percent.ToString();
             Color color = r == null ? Color.Gray
                 : r.Percent <= LowBatteryPercent ? Color.FromArgb(255, 70, 70)
                 : r.Percent <= 50 ? Color.FromArgb(255, 200, 40)
