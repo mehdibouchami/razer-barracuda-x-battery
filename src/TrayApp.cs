@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -25,8 +26,10 @@ namespace BarracudaBattery
 
     sealed class TrayApp : ApplicationContext
     {
-        const int PollIntervalMs = 60 * 1000;
-        const int RetryIntervalMs = 10 * 1000; // while the headset is off / on Bluetooth
+        // The timer ticks at a fixed rate and each tick decides whether a query is due. (Changing a running
+        // WinForms timer's Interval stopped it from ticking, so the interval never changes.)
+        const int TickMs = 10 * 1000;             // poll rate while the headset is off / on Bluetooth
+        const int ConnectedPollMs = 30 * 1000;    // poll rate while connected
         const int LowBatteryPercent = 20;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunValue = "BarracudaBattery";
@@ -38,6 +41,7 @@ namespace BarracudaBattery
         int busy;
         bool lowWarned;
         int shownPercent = -1;
+        DateTime nextPollUtc = DateTime.MaxValue; // set after the startup query completes
         IntPtr iconHandle;
 
         public TrayApp()
@@ -53,8 +57,9 @@ namespace BarracudaBattery
             var menu = new ContextMenuStrip();
             menu.Items.Add(title);
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Refresh now", null, delegate { Refresh(); });
+            menu.Items.Add("Refresh now", null, delegate { Refresh("manual"); });
             menu.Items.Add(startupItem);
+            menu.Items.Add("Open log folder", null, delegate { OpenUrl(Log.Folder); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("GitHub", null, delegate { OpenUrl(AppInfo.GitHubUrl); });
             if (AppInfo.SponsorUrl.Length > 0)
@@ -63,24 +68,32 @@ namespace BarracudaBattery
             menu.Items.Add("Exit", null, delegate { ExitThread(); });
 
             tray.ContextMenuStrip = menu;
-            tray.DoubleClick += delegate { Refresh(); };
+            tray.DoubleClick += delegate { Refresh("manual"); };
             tray.Visible = true;
-            Show(null, "Barracuda X: checking...");
+            Show(null, "checking...");
 
-            timer.Interval = PollIntervalMs;
-            timer.Tick += delegate { Refresh(); };
+            Log.Write("started v" + AppInfo.Version);
+            timer.Interval = TickMs;
+            timer.Tick += delegate { if (DateTime.UtcNow >= nextPollUtc) Refresh("timer"); };
             timer.Start();
-            Refresh();
+            Refresh("startup");
         }
 
-        void Refresh()
+        void Refresh(string trigger)
         {
             // HID I/O blocks for up to a few seconds; keep it off the UI thread and never overlap queries.
-            if (Interlocked.Exchange(ref busy, 1) == 1) return;
+            if (Interlocked.Exchange(ref busy, 1) == 1)
+            {
+                Log.Write(trigger + ": skipped, previous query still running");
+                return;
+            }
             ThreadPool.QueueUserWorkItem(delegate
             {
                 BatteryReading reading = null;
                 string status;
+                var trace = new StringBuilder();
+                BarracudaProtocol.Trace = (dir, data) => trace.AppendLine("      " + dir + " "
+                    + BitConverter.ToString(data, 0, Math.Min(data.Length, 24)).Replace('-', ' '));
                 try
                 {
                     HidInfo info = BarracudaProtocol.FindControlInterface();
@@ -99,14 +112,22 @@ namespace BarracudaBattery
                 {
                     status = "error: " + e.Message;
                 }
+                BarracudaProtocol.Trace = null;
+
+                if (reading != null)
+                    Log.Write(string.Format("{0}: {1}% ({2} mV)", trigger, reading.Percent, reading.Millivolts));
+                else
+                    Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
+
                 ui.Post(delegate
                 {
                     Interlocked.Exchange(ref busy, 0);
                     Show(reading, status);
                     // The dongle stays plugged in when the headset turns off or switches to Bluetooth, so there's
-                    // no device event for its return: poll faster while it's away to pick it up quickly.
-                    int interval = reading == null ? RetryIntervalMs : PollIntervalMs;
-                    if (timer.Interval != interval) timer.Interval = interval;
+                    // no device event for its return: poll on every tick while it's away to pick it up quickly.
+                    // (The 2 s slack keeps tick jitter from pushing a due poll to the following tick.)
+                    nextPollUtc = reading == null ? DateTime.UtcNow
+                        : DateTime.UtcNow.AddMilliseconds(ConnectedPollMs - 2000);
                 }, null);
             });
         }
