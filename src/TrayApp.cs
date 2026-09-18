@@ -26,6 +26,7 @@ namespace BarracudaBattery
     sealed class TrayApp : ApplicationContext
     {
         const int PollIntervalMs = 60 * 1000;
+        const int RetryIntervalMs = 10 * 1000; // while the headset is off / on Bluetooth
         const int LowBatteryPercent = 20;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunValue = "BarracudaBattery";
@@ -102,6 +103,10 @@ namespace BarracudaBattery
                 {
                     Interlocked.Exchange(ref busy, 0);
                     Show(reading, status);
+                    // The dongle stays plugged in when the headset turns off or switches to Bluetooth, so there's
+                    // no device event for its return: poll faster while it's away to pick it up quickly.
+                    int interval = reading == null ? RetryIntervalMs : PollIntervalMs;
+                    if (timer.Interval != interval) timer.Interval = interval;
                 }, null);
             });
         }

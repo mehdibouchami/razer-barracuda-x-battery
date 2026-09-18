@@ -4,7 +4,7 @@ See your **Razer Barracuda X (2022)** battery level in the Windows tray while it
 
 - The tray icon shows the battery level in 10% steps (like Razer's mobile app), colored green, yellow or red
 - Hover the icon for the exact voltage, e.g. `Barracuda X: 70% (3.98 V)`
-- Updates every minute; double-click the icon to refresh right away
+- Updates every minute, and picks the headset back up within ~10 seconds after it was off or on Bluetooth; double-click the icon to refresh right away
 - Low-battery notification at 20%
 - Optional "Start with Windows"
 - Tiny (~20 KB), no installer, no Razer software and no extra runtime needed
