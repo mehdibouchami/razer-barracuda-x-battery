@@ -232,6 +232,7 @@ namespace BarracudaBattery
         public const uint FILE_FLAG_OVERLAPPED = 0x40000000;
         public const int ERROR_IO_PENDING = 997, ERROR_OPERATION_ABORTED = 995;
         public const int HIDP_STATUS_SUCCESS = 0x00110000;
+        public const int HidP_Output = 1;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct SP_DEVICE_INTERFACE_DATA
@@ -284,12 +285,11 @@ namespace BarracudaBattery
         [DllImport("hid.dll")]
         public static extern int HidP_GetCaps(IntPtr data, ref HIDP_CAPS caps);
         [DllImport("hid.dll")]
+        public static extern int HidP_GetValueCaps(int reportType, IntPtr caps, ref ushort length, IntPtr data);
+        [DllImport("hid.dll")]
         public static extern bool HidD_FlushQueue(SafeFileHandle h);
         [DllImport("hid.dll", SetLastError = true)]
         public static extern bool HidD_GetInputReport(SafeFileHandle h, byte[] buffer, int length);
-        public const int HidP_Output = 1;
-        [DllImport("hid.dll")]
-        public static extern int HidP_GetValueCaps(int reportType, IntPtr caps, ref ushort length, IntPtr data);
 
         [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern IntPtr SetupDiGetClassDevs(ref Guid classGuid, IntPtr enumerator, IntPtr parent, int flags);

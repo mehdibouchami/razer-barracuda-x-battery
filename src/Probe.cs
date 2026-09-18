@@ -27,7 +27,7 @@ namespace BarracudaBattery
                 var r = BarracudaProtocol.Query(dev);
                 if (r == null)
                 {
-                    Console.WriteLine("\nNo battery reading (headset off, or protocol differs for this dongle).");
+                    Console.WriteLine("\nNo battery reading: headset off, on Bluetooth, or out of range.");
                     return 2;
                 }
                 Console.WriteLine("\nBattery: {0}% ({1} mV)", r.Percent, r.Millivolts);

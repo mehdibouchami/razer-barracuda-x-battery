@@ -18,7 +18,7 @@ tasklist /fi "imagename eq BarracudaBattery.exe" 2>nul | find /i "BarracudaBatte
 
 "%CSC%" /nologo /optimize /platform:x64 /target:winexe /out:bin\BarracudaBattery.exe /win32icon:assets\app.ico ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll ^
-  src\AppInfo.cs src\Hid.cs src\Protocol.cs src\Log.cs src\TrayApp.cs || exit /b 1
+  src\AppInfo.cs src\Hid.cs src\Protocol.cs src\Log.cs src\IconRenderer.cs src\TrayApp.cs || exit /b 1
 
 echo Built bin\probe.exe and bin\BarracudaBattery.exe
 if defined RESTART start "" bin\BarracudaBattery.exe

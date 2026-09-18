@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Text;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -171,39 +170,15 @@ namespace BarracudaBattery
 
         void SetIcon(BatteryReading r)
         {
-            Size size = SystemInformation.SmallIconSize;
-            using (var bmp = new Bitmap(size.Width, size.Height))
-            using (Graphics g = Graphics.FromImage(bmp))
+            // "100%" doesn't fit a 16 px icon; a full battery shows "100" alone
+            string label = r == null ? "--" : r.Percent >= 100 ? "100" : r.Percent + "%";
+            Color color = r == null ? Color.Gray
+                : r.Percent <= LowBatteryPercent ? Color.FromArgb(255, 70, 70)
+                : r.Percent <= 50 ? Color.FromArgb(255, 200, 40)
+                : Color.FromArgb(68, 214, 44); // Razer green
+
+            using (Bitmap bmp = IconRenderer.Render(SystemInformation.SmallIconSize, label, color))
             {
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                g.Clear(Color.Transparent);
-
-                string label = r == null ? "--" : (r.Percent >= 100 ? "F" : r.Percent.ToString());
-                Color color = r == null ? Color.Gray
-                    : r.Percent <= LowBatteryPercent ? Color.FromArgb(255, 70, 70)
-                    : r.Percent <= 50 ? Color.FromArgb(255, 200, 40)
-                    : Color.FromArgb(68, 214, 44); // Razer green
-
-                // Pick the largest font that fits the icon
-                float em = size.Height;
-                Font font = null;
-                SizeF measured;
-                do
-                {
-                    if (font != null) font.Dispose();
-                    font = new Font("Segoe UI", em, FontStyle.Bold, GraphicsUnit.Pixel);
-                    measured = g.MeasureString(label, font, PointF.Empty, StringFormat.GenericTypographic);
-                    em -= 0.5f;
-                } while ((measured.Width > size.Width || measured.Height > size.Height) && em > 4);
-
-                using (font)
-                using (var brush = new SolidBrush(color))
-                {
-                    float x = (size.Width - measured.Width) / 2;
-                    float y = (size.Height - measured.Height) / 2;
-                    g.DrawString(label, font, brush, x, y, StringFormat.GenericTypographic);
-                }
-
                 IntPtr old = iconHandle;
                 iconHandle = bmp.GetHicon();
                 tray.Icon = Icon.FromHandle(iconHandle);
