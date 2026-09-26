@@ -15,7 +15,7 @@ namespace BarracudaBattery
         public const string Version = "1.0.0";
         public const string Author = "Mehdi Bouchami";
         public const string GitHubUrl = "https://github.com/mehdibouchami/razer-barracuda-x-battery";
-        // Donation page (PayPal, ba9chich, GitHub Sponsors...). Empty = the "Support" menu item is hidden.
-        public const string SponsorUrl = "";
+        // Donation page. Empty = the "Support" menu item is hidden.
+        public const string SponsorUrl = "https://ba9chich.com/fr/mehdibouchami";
     }
 }

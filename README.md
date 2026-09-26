@@ -48,6 +48,10 @@ build.cmd
 
 This produces `bin\BarracudaBattery.exe` (the tray app) and `bin\probe.exe` (a command-line tool that prints the raw exchange with the dongle, useful for debugging). If the tray app is running, the build closes it and starts the new version afterwards.
 
+## Support
+
+If this saved you from switching to Bluetooth just to check the battery, you can [buy me a coffee on Bakchich](https://ba9chich.com/fr/mehdibouchami). It's entirely optional - the app is free and always will be.
+
 ## Credits
 
 - Made by [Mehdi Bouchami](https://github.com/mehdibouchami)
