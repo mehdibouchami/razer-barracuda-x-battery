@@ -30,7 +30,8 @@ namespace BarracudaBattery
                     Console.WriteLine("\nNo battery reading: headset off, on Bluetooth, or out of range.");
                     return 2;
                 }
-                Console.WriteLine("\nBattery: {0}% ({1} mV)", r.Percent, r.Millivolts);
+                Console.WriteLine("\nBattery: {0}% ({1} mV){2}", r.Percent, r.Millivolts,
+                    r.Charging ? "  CHARGING (level unreliable while plugged in)" : "");
             }
             return 0;
         }

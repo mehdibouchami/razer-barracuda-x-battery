@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
@@ -8,6 +9,7 @@ namespace BarracudaBattery
     {
         public int Millivolts;
         public int Percent;
+        public bool Charging;
     }
 
     /// <summary>
@@ -30,8 +32,16 @@ namespace BarracudaBattery
         public const ushort RazerVid = 0x1532;
         public static readonly ushort[] DonglePids = { 0x0550, 0x0552 };
         const ushort VendorUsagePage = 0xFF00;
-        const int TimeoutMs = 800;
+        const int DefaultTimeoutMs = 800;
+        static int timeoutOverrideMs;
+        static int TimeoutMs
+        {
+            get { return timeoutOverrideMs > 0 ? timeoutOverrideMs : DefaultTimeoutMs; }
+        }
         const byte RaceGetBattery = 0x31;
+        const int ChargeSamples = 5;      // spread over ~1.5 s: two consecutive samples can match while charging
+        const int ChargeJitterMv = 15;   // spread across samples: ~3 mV on battery, 30-45 mV while charging
+        const int ChargeVoltageMv = 4180; // above any resting voltage, so the charger must be connected
 
         // Battery voltage (mV) for 0%, 10%, ... 100%: typical Li-ion discharge curve,
         // checked against the Razer mobile app (3975 mV = 70%).
@@ -58,20 +68,42 @@ namespace BarracudaBattery
             // answers GET_BATTERY itself with a meaningless value.
             byte[] reply = Race(dev, 0x0E, 0x02, 0xE1, 0x01);
             if (reply == null || reply[12] != 0x00) return null;
+
+            // The headset reports voltage only - no charging flag and no percentage (Bluetooth has a standard
+            // battery level, 2.4 GHz doesn't). While charging, the voltage is raised by the charger and swings
+            // by tens of millivolts between samples; on battery it is steady within a few millivolts. So take a
+            // few samples and use their spread to tell the two apart.
+            var samples = new List<int>();
             try
             {
-                reply = Race(dev, 0x06, 0x01, 0x00, RaceGetBattery);
+                for (int i = 0; i < ChargeSamples; i++)
+                {
+                    if (i > 0) Thread.Sleep(350);
+                    reply = Race(dev, 0x06, 0x01, 0x00, RaceGetBattery);
+                    // Response: [12]=status, [13..14]=millivolts (LE)
+                    if (reply == null || reply.Length < 15 || reply[12] != 0x00) continue;
+                    int sample = reply[13] | (reply[14] << 8);
+                    if (sample >= 2500 && sample <= 4500) samples.Add(sample);
+                }
             }
             finally
             {
                 Race(dev, 0x0E, 0x02, 0xE1, 0x00);
             }
+            if (samples.Count == 0) return null;
 
-            // Response: [12]=status, [13..14]=millivolts (LE)
-            if (reply == null || reply.Length < 15 || reply[12] != 0x00) return null;
-            int mv = reply[13] | (reply[14] << 8);
-            if (mv < 2500 || mv > 4500) return null;
-            return new BatteryReading { Millivolts = mv, Percent = ToPercent(mv) };
+            int mv = samples.Min();
+            bool charging = samples.Max() - samples.Min() >= ChargeJitterMv || mv >= ChargeVoltageMv;
+            return new BatteryReading { Millivolts = mv, Percent = ToPercent(mv), Charging = charging };
+        }
+
+        /// <summary>Diagnostics only (probe/tools): sends one RACE command with a custom timeout.</summary>
+        public static byte[] Debug_Race(HidDevice dev, int timeoutMs, byte group, params byte[] body)
+        {
+            int saved = timeoutOverrideMs;
+            timeoutOverrideMs = timeoutMs;
+            try { return Race(dev, group, body); }
+            finally { timeoutOverrideMs = saved; }
         }
 
         /// <summary>Sends an Airoha RACE command (50 41 group seq body...) and returns the matching

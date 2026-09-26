@@ -39,7 +39,7 @@ namespace BarracudaBattery
         readonly SynchronizationContext ui;
         int busy;
         bool lowWarned;
-        int shownPercent = -1;
+        int shownPercent = Log.ReadLastPercent(); // survives restarts, so a restart while charging still has a level
         string lastLoggedState;
         DateTime nextPollUtc = DateTime.MaxValue; // set after the startup query completes
         IntPtr iconHandle;
@@ -116,13 +116,13 @@ namespace BarracudaBattery
                 // Log only changes (connected / headset away / dongle missing...), with the raw exchange for
                 // failures, so the log stays small while still showing what happened. Queries never overlap,
                 // so lastLoggedState is only touched by one worker at a time.
-                string state = reading != null ? "connected" : status;
+                string state = reading != null ? (reading.Charging ? "charging" : "connected") : status;
                 if (state != lastLoggedState)
                 {
                     lastLoggedState = state;
                     if (reading != null)
-                        Log.Write(string.Format("{0}: connected, {1}% ({2} mV)", trigger, reading.Percent,
-                            reading.Millivolts));
+                        Log.Write(string.Format("{0}: connected, {1}% ({2} mV){3}", trigger, reading.Percent,
+                            reading.Millivolts, reading.Charging ? ", charging" : ""));
                     else
                         Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
                 }
@@ -142,49 +142,68 @@ namespace BarracudaBattery
 
         void Show(BatteryReading r, string status)
         {
-            string text;
-            if (r != null)
+            string text, label;
+            Color color;
+
+            if (r == null)
             {
-                r = new BatteryReading { Millivolts = r.Millivolts, Percent = Step(r.Percent) };
-                text = string.Format("Barracuda X: {0}% ({1:0.00} V)", r.Percent, r.Millivolts / 1000.0);
-                if (r.Percent <= LowBatteryPercent && !lowWarned)
+                text = "Barracuda X: " + status;
+                label = "--";
+                color = Color.Gray;
+            }
+            else if (r.Charging)
+            {
+                // The charger raises the voltage, so the level can't be estimated while plugged in: keep showing
+                // the last level from before charging (blue), rather than a wrong percentage.
+                string volts = string.Format("{0:0.00} V", r.Millivolts / 1000.0);
+                text = shownPercent >= 0
+                    ? string.Format("Barracuda X: charging ({0} V, was {1}%)", volts, shownPercent)
+                    : "Barracuda X: charging (" + volts + ")";
+                label = shownPercent >= 0 ? shownPercent.ToString() : "--";
+                color = Color.FromArgb(80, 170, 255);
+                lowWarned = false;
+            }
+            else
+            {
+                int percent = Step(r.Percent);
+                text = string.Format("Barracuda X: {0}% ({1:0.00} V)", percent, r.Millivolts / 1000.0);
+                label = percent.ToString();
+                color = percent <= LowBatteryPercent ? Color.FromArgb(255, 70, 70)
+                    : percent <= 50 ? Color.FromArgb(255, 200, 40)
+                    : Color.FromArgb(68, 214, 44); // Razer green
+
+                if (percent <= LowBatteryPercent && !lowWarned)
                 {
                     lowWarned = true;
-                    tray.ShowBalloonTip(5000, "Barracuda X battery low", r.Percent + "% remaining - time to charge.",
+                    tray.ShowBalloonTip(5000, "Barracuda X battery low", percent + "% remaining - time to charge.",
                         ToolTipIcon.Warning);
                 }
-                else if (r.Percent > LowBatteryPercent + 5)
+                else if (percent > LowBatteryPercent + 5)
                 {
                     lowWarned = false;
                 }
             }
-            else
-            {
-                text = "Barracuda X: " + status;
-            }
+
             tray.Text = text.Length > 63 ? text.Substring(0, 63) : text;
-            SetIcon(r);
+            SetIcon(label, color);
         }
 
         /// <summary>
-        /// Rounds to 10% steps like Razer's app. Hysteresis: the shown step only changes once the estimate is
-        /// 7+ points away from it (2 past the rounding midpoint), so voltage noise doesn't make it flicker.
+        /// Rounds to 5% steps. Hysteresis: the shown step only changes once the estimate is 4+ points away from
+        /// it (1.5 past the rounding midpoint), so voltage noise doesn't make it flicker.
         /// </summary>
         int Step(int percent)
         {
-            if (shownPercent < 0 || Math.Abs(percent - shownPercent) >= 7)
-                shownPercent = (percent + 5) / 10 * 10;
+            if (shownPercent < 0 || Math.Abs(percent - shownPercent) >= 4)
+            {
+                shownPercent = (percent + 2) / 5 * 5;
+                Log.WriteLastPercent(shownPercent);
+            }
             return shownPercent;
         }
 
-        void SetIcon(BatteryReading r)
+        void SetIcon(string label, Color color)
         {
-            string label = r == null ? "--" : r.Percent.ToString();
-            Color color = r == null ? Color.Gray
-                : r.Percent <= LowBatteryPercent ? Color.FromArgb(255, 70, 70)
-                : r.Percent <= 50 ? Color.FromArgb(255, 200, 40)
-                : Color.FromArgb(68, 214, 44); // Razer green
-
             using (Bitmap bmp = IconRenderer.Render(SystemInformation.SmallIconSize, label, color))
             {
                 IntPtr old = iconHandle;
