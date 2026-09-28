@@ -77,16 +77,22 @@ namespace BarracudaBattery
             }
         }
 
-        static byte GetOutputReportId(IntPtr preparsed)
+        static byte GetOutputReportId(IntPtr preparsed, Native.HIDP_CAPS caps)
         {
-            // HIDP_VALUE_CAPS is 72 bytes; ReportID is the byte at offset 2
-            const int ValueCapsSize = 72;
-            ushort count = 16;
-            IntPtr buf = Marshal.AllocHGlobal(ValueCapsSize * count);
+            // Output reports are described by value caps (a byte array) or, less often, button caps
+            byte id = ReadCapsReportId(Native.HidP_GetValueCaps, caps.NumberOutputValueCaps, preparsed);
+            return id != 0 ? id : ReadCapsReportId(Native.HidP_GetButtonCaps, caps.NumberOutputButtonCaps, preparsed);
+        }
+
+        static byte ReadCapsReportId(Native.GetCapsFn get, ushort count, IntPtr preparsed)
+        {
+            // HIDP_VALUE_CAPS and HIDP_BUTTON_CAPS are both 72 bytes; ReportID is the byte at offset 2
+            const int CapsSize = 72;
+            if (count == 0) return 0;
+            IntPtr buf = Marshal.AllocHGlobal(CapsSize * count);
             try
             {
-                if (Native.HidP_GetValueCaps(Native.HidP_Output, buf, ref count, preparsed) != Native.HIDP_STATUS_SUCCESS
-                    || count == 0)
+                if (get(Native.HidP_Output, buf, ref count, preparsed) != Native.HIDP_STATUS_SUCCESS || count == 0)
                     return 0;
                 return Marshal.ReadByte(buf, 2);
             }
@@ -118,7 +124,7 @@ namespace BarracudaBattery
                         info.InputLength = caps.InputReportByteLength;
                         info.OutputLength = caps.OutputReportByteLength;
                         info.FeatureLength = caps.FeatureReportByteLength;
-                        info.OutputReportId = GetOutputReportId(pre);
+                        info.OutputReportId = GetOutputReportId(pre, caps);
                     }
                     Native.HidD_FreePreparsedData(pre);
                 }
@@ -286,6 +292,9 @@ namespace BarracudaBattery
         public static extern int HidP_GetCaps(IntPtr data, ref HIDP_CAPS caps);
         [DllImport("hid.dll")]
         public static extern int HidP_GetValueCaps(int reportType, IntPtr caps, ref ushort length, IntPtr data);
+        [DllImport("hid.dll")]
+        public static extern int HidP_GetButtonCaps(int reportType, IntPtr caps, ref ushort length, IntPtr data);
+        public delegate int GetCapsFn(int reportType, IntPtr caps, ref ushort length, IntPtr data);
         [DllImport("hid.dll")]
         public static extern bool HidD_FlushQueue(SafeFileHandle h);
         [DllImport("hid.dll", SetLastError = true)]

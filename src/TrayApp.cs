@@ -95,17 +95,7 @@ namespace BarracudaBattery
                     + BitConverter.ToString(data, 0, Math.Min(data.Length, 24)).Replace('-', ' '));
                 try
                 {
-                    HidInfo info = BarracudaProtocol.FindControlInterface();
-                    if (info == null)
-                    {
-                        status = "dongle not found";
-                    }
-                    else
-                    {
-                        using (var dev = new HidDevice(info))
-                            reading = BarracudaProtocol.Query(dev);
-                        status = reading == null ? "headset off or out of range" : null;
-                    }
+                    reading = BarracudaProtocol.Read(out status);
                 }
                 catch (Exception e)
                 {

@@ -52,17 +52,69 @@ namespace BarracudaBattery
         /// <summary>Optional hook that receives every raw packet sent (">") and received ("<").</summary>
         public static Action<string, byte[]> Trace;
 
-        public static HidInfo FindControlInterface()
+        /// <summary>Vendor interfaces that can carry the command, most likely first (the bridge uses 64-byte reports).
+        /// Some dongles expose several vendor collections, and writing to the wrong one fails with
+        /// ERROR_INVALID_PARAMETER.</summary>
+        public static List<HidInfo> FindControlInterfaces()
         {
             return Hid.Enumerate(RazerVid, DonglePids)
-                .FirstOrDefault(i => i.UsagePage == VendorUsagePage && i.OutputLength > 0 && i.InputLength > 0);
+                .Where(i => i.UsagePage == VendorUsagePage && i.OutputLength > 0 && i.InputLength > 0)
+                .OrderBy(i => i.InputLength == 64 && i.OutputLength == 64 ? 0 : 1)
+                .ToList();
+        }
+
+        /// <summary>Tries each candidate interface until one answers. <paramref name="status"/> is null on success,
+        /// otherwise says why there is no reading (dongle missing, headset away, or the last I/O error).</summary>
+        public static BatteryReading Read(out string status)
+        {
+            List<HidInfo> candidates = FindControlInterfaces();
+            if (candidates.Count == 0)
+            {
+                status = "dongle not found";
+                return null;
+            }
+            string error = null;
+            bool answered = false;
+            foreach (HidInfo info in candidates)
+            {
+                if (Trace != null) Trace("interface " + info, new byte[0]);
+                try
+                {
+                    using (var dev = new HidDevice(info))
+                    {
+                        BatteryReading reading = Query(dev);
+                        if (reading != null)
+                        {
+                            status = null;
+                            return reading;
+                        }
+                    }
+                    answered = true;
+                }
+                catch (Exception e)
+                {
+                    error = e.Message;
+                    if (Trace != null) Trace("! " + e.Message, new byte[0]);
+                }
+            }
+            // An interface that talked without error means the dongle works and the headset is just away
+            status = answered || error == null ? "headset off or out of range" : "error: " + error;
+            return null;
+        }
+
+        /// <summary>Report ID of the vendor collection: 0x02 = YS-Tech bridge, otherwise Macronix. Falls back to the
+        /// product ID when the descriptor couldn't be read.</summary>
+        static byte ReportId(HidInfo info)
+        {
+            if (info.OutputReportId != 0) return info.OutputReportId;
+            return (byte)(info.ProductId == 0x0550 ? 0x02 : 0x01);
         }
 
         /// <summary>Returns null when the dongle is present but the headset doesn't answer (e.g. powered off).</summary>
         public static BatteryReading Query(HidDevice dev)
         {
             dev.Flush();
-            if (dev.Info.OutputReportId != 0x02 && !EnterMacronixAppMode(dev)) return null;
+            if (ReportId(dev.Info) != 0x02 && !EnterMacronixAppMode(dev)) return null;
 
             // Remote mode makes the dongle forward commands to the headset; in local mode the dongle
             // answers GET_BATTERY itself with a meaningless value.
@@ -119,7 +171,7 @@ namespace BarracudaBattery
             Array.Copy(body, 0, race, 4, body.Length);
             Func<byte[], bool> matches = p => p.Length >= 13 && p[0] == 0x50 && p[1] == 0x49
                 && p[10] == group && p[11] == (0x80 | seq);
-            return dev.Info.OutputReportId == 0x02 ? SendYsTech(dev, race, matches) : SendMacronix(dev, race, matches);
+            return ReportId(dev.Info) == 0x02 ? SendYsTech(dev, race, matches) : SendMacronix(dev, race, matches);
         }
 
         static byte NextSequence()
@@ -180,7 +232,7 @@ namespace BarracudaBattery
 
         static bool EnterMacronixAppMode(HidDevice dev)
         {
-            byte id = dev.Info.OutputReportId;
+            byte id = ReportId(dev.Info);
             if (Trace != null) Trace(">", new byte[] { id, 0x40 });
             if (!dev.Write(new byte[] { id, 0x40 }, TimeoutMs)) return false;
             byte[] mode = ReadUntil(dev, r => r.Length >= 4 && r[0] == id && r[1] == 0x40 ? r : null);
@@ -189,7 +241,7 @@ namespace BarracudaBattery
 
         static byte[] SendMacronix(HidDevice dev, byte[] race, Func<byte[], bool> matches)
         {
-            byte id = dev.Info.OutputReportId;
+            byte id = ReportId(dev.Info);
             var frame = new byte[3 + race.Length];
             frame[0] = id;
             frame[1] = 0x80;

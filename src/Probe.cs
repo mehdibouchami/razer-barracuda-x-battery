@@ -11,28 +11,18 @@ namespace BarracudaBattery
             Console.WriteLine("Found {0} matching HID interface(s):", all.Count);
             foreach (var i in all) Console.WriteLine("  " + i);
 
-            HidInfo ctrl = BarracudaProtocol.FindControlInterface();
-            if (ctrl == null)
-            {
-                Console.WriteLine("No vendor (0xFF00) interface found. Is the dongle plugged in?");
-                return 1;
-            }
-            Console.WriteLine("\nUsing: " + ctrl.Path);
-
             BarracudaProtocol.Trace = (dir, data) =>
                 Console.WriteLine("{0} {1}", dir, string.Join(" ", data.Take(24).Select(b => b.ToString("X2"))));
 
-            using (var dev = new HidDevice(ctrl))
+            string status;
+            var r = BarracudaProtocol.Read(out status);
+            if (r == null)
             {
-                var r = BarracudaProtocol.Query(dev);
-                if (r == null)
-                {
-                    Console.WriteLine("\nNo battery reading: headset off, on Bluetooth, or out of range.");
-                    return 2;
-                }
-                Console.WriteLine("\nBattery: {0}% ({1} mV){2}", r.Percent, r.Millivolts,
-                    r.Charging ? "  CHARGING (level unreliable while plugged in)" : "");
+                Console.WriteLine("\nNo battery reading: " + status);
+                return 2;
             }
+            Console.WriteLine("\nBattery: {0}% ({1} mV){2}", r.Percent, r.Millivolts,
+                r.Charging ? "  CHARGING (level unreliable while plugged in)" : "");
             return 0;
         }
     }
