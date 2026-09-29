@@ -210,9 +210,7 @@ namespace BarracudaBattery
             return ReadUntil(dev, r =>
             {
                 if (r.Length < 2 || r[0] != 0x02 || r[1] > r.Length - 2) return null;
-                var payload = new byte[r[1]];
-                Array.Copy(r, 2, payload, 0, payload.Length);
-                return matches(payload) ? payload : null;
+                return FindFrame(r, 2, r[1], matches);
             });
         }
 
@@ -253,10 +251,31 @@ namespace BarracudaBattery
             return ReadUntil(dev, r =>
             {
                 if (r.Length < 3 || r[0] != id || r[1] != 0x80 || r[2] > r.Length - 3) return null;
-                var payload = new byte[r[2]];
-                Array.Copy(r, 3, payload, 0, payload.Length);
-                return matches(payload) ? payload : null;
+                return FindFrame(r, 3, r[2], matches);
             });
+        }
+
+        /// <summary>
+        /// One input report can carry several RACE frames back to back: 50 49 xx xx + 4 bytes, a 16-bit payload
+        /// length, then the payload. The dongle also emits unsolicited status events (group 0x11), sometimes in
+        /// bursts, so the answer we're waiting for is often not the first frame in the report - walk them all.
+        /// </summary>
+        static byte[] FindFrame(byte[] report, int offset, int length, Func<byte[], bool> matches)
+        {
+            const int HeaderLength = 10; // 50 49 + 6 bytes, of which the last two are the payload length
+            int end = Math.Min(offset + length, report.Length);
+            for (int pos = offset; pos + HeaderLength <= end; )
+            {
+                if (report[pos] != 0x50 || report[pos + 1] != 0x49) return null;
+                int payloadLength = report[pos + 8] | (report[pos + 9] << 8);
+                int frameEnd = pos + HeaderLength + payloadLength;
+                if (frameEnd > end) return null;
+                var frame = new byte[HeaderLength + payloadLength];
+                Array.Copy(report, pos, frame, 0, frame.Length);
+                if (matches(frame)) return frame;
+                pos = frameEnd;
+            }
+            return null;
         }
 
         /// <summary>Reads input reports until <paramref name="extract"/> returns non-null, or the timeout expires.
