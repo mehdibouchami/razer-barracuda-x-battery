@@ -74,7 +74,7 @@ namespace BarracudaBattery
             tray.Visible = true;
             Show(null, "checking...", false);
 
-            Log.Write("started v" + AppInfo.Version);
+            Log.Write("started v" + AppInfo.Version + " - " + BarracudaProtocol.DescribeDongles());
             timer.Interval = TickMs;
             timer.Tick += delegate { if (DateTime.UtcNow >= nextPollUtc) Refresh("timer"); };
             timer.Start();

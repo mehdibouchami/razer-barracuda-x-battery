@@ -65,6 +65,15 @@ namespace BarracudaBattery
 
         /// <summary>Tries each candidate interface until one answers. <paramref name="status"/> is null on success,
         /// otherwise says why there is no reading (dongle missing, headset away, or the last I/O error).</summary>
+        /// <summary>For the log: which dongle(s) are plugged in and which framing they use.</summary>
+        public static string DescribeDongles()
+        {
+            List<HidInfo> found = FindControlInterfaces();
+            if (found.Count == 0) return "no dongle found";
+            return string.Join("; ", found.Select(i => string.Format("{0:X4}:{1:X4} {2} framing",
+                i.VendorId, i.ProductId, ReportId(i) == 0x02 ? "YS-Tech" : "Macronix")).ToArray());
+        }
+
         public static BatteryReading Read(out string status)
         {
             List<HidInfo> candidates = FindControlInterfaces();
