@@ -41,6 +41,9 @@ namespace BarracudaBattery
         bool lowWarned;
         int shownPercent = Log.ReadLastPercent(); // survives restarts, so a restart while charging still has a level
         string lastLoggedState;
+        bool chargingSticky;
+        int notChargingStreak;
+        const int NotChargingChecks = 3; // ~1.5 min of "not charging" before the level starts moving again
         DateTime nextPollUtc = DateTime.MaxValue; // set after the startup query completes
         IntPtr iconHandle;
 
@@ -69,7 +72,7 @@ namespace BarracudaBattery
             tray.ContextMenuStrip = menu;
             tray.DoubleClick += delegate { Refresh("manual"); };
             tray.Visible = true;
-            Show(null, "checking...");
+            Show(null, "checking...", false);
 
             Log.Write("started v" + AppInfo.Version);
             timer.Interval = TickMs;
@@ -103,24 +106,25 @@ namespace BarracudaBattery
                 }
                 BarracudaProtocol.Trace = null;
 
-                // Log only changes (connected / headset away / dongle missing...), with the raw exchange for
-                // failures, so the log stays small while still showing what happened. Queries never overlap,
-                // so lastLoggedState is only touched by one worker at a time.
-                string state = reading != null ? (reading.Charging ? "charging" : "connected") : status;
-                if (state != lastLoggedState)
-                {
-                    lastLoggedState = state;
-                    if (reading != null)
-                        Log.Write(string.Format("{0}: connected, {1}% ({2} mV){3}", trigger, reading.Percent,
-                            reading.Millivolts, reading.Charging ? ", charging" : ""));
-                    else
-                        Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
-                }
-
                 ui.Post(delegate
                 {
                     Interlocked.Exchange(ref busy, 0);
-                    Show(reading, status);
+                    bool charging = reading != null && IsCharging(reading);
+
+                    // Log only changes (connected / charging / headset away / dongle missing...), with the raw
+                    // exchange for failures, so the log stays small while still showing what happened.
+                    string state = reading != null ? (charging ? "charging" : "connected") : status;
+                    if (state != lastLoggedState)
+                    {
+                        lastLoggedState = state;
+                        if (reading != null)
+                            Log.Write(string.Format("{0}: connected, {1}% ({2} mV){3}", trigger, reading.Percent,
+                                reading.Millivolts, charging ? ", charging" : ""));
+                        else
+                            Log.Write(trigger + ": " + status + Environment.NewLine + trace.ToString().TrimEnd());
+                    }
+
+                    Show(reading, status, charging);
                     // The dongle stays plugged in when the headset turns off or switches to Bluetooth, so there's
                     // no device event for its return: poll on every tick while it's away to pick it up quickly.
                     // (The 2 s slack keeps tick jitter from pushing a due poll to the following tick.)
@@ -130,7 +134,26 @@ namespace BarracudaBattery
             });
         }
 
-        void Show(BatteryReading r, string status)
+        /// <summary>
+        /// Charging detection can miss a check (the voltage swing isn't always visible in one sample window), and
+        /// a single miss would let the charger-inflated voltage update the level - which is how it used to creep
+        /// up to 100% mid-charge. So charging sticks until several checks in a row say otherwise.
+        /// </summary>
+        bool IsCharging(BatteryReading r)
+        {
+            if (r.Charging)
+            {
+                chargingSticky = true;
+                notChargingStreak = 0;
+                return true;
+            }
+            if (!chargingSticky) return false;
+            if (++notChargingStreak < NotChargingChecks) return true;
+            chargingSticky = false;
+            return false;
+        }
+
+        void Show(BatteryReading r, string status, bool charging)
         {
             string text, label;
             Color color;
@@ -141,7 +164,7 @@ namespace BarracudaBattery
                 label = "--";
                 color = Color.Gray;
             }
-            else if (r.Charging)
+            else if (charging)
             {
                 // The charger raises the voltage, so the level can't be estimated while plugged in: keep showing
                 // the last level from before charging (blue), rather than a wrong percentage.

@@ -39,8 +39,8 @@ namespace BarracudaBattery
             get { return timeoutOverrideMs > 0 ? timeoutOverrideMs : DefaultTimeoutMs; }
         }
         const byte RaceGetBattery = 0x31;
-        const int ChargeSamples = 5;      // spread over ~1.5 s: two consecutive samples can match while charging
-        const int ChargeJitterMv = 15;   // spread across samples: ~3 mV on battery, 30-45 mV while charging
+        const int ChargeSamples = 7;      // spread over ~2 s: consecutive samples can match while charging
+        const int ChargeJitterMv = 12;   // spread across samples: ~3 mV on battery, 30-45 mV while charging
         const int ChargeVoltageMv = 4180; // above any resting voltage, so the charger must be connected
 
         // Battery voltage (mV) for 0%, 10%, ... 100%: typical Li-ion discharge curve,
