@@ -12,7 +12,7 @@ namespace BarracudaBattery
 {
     static class AppInfo
     {
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
         public const string Author = "Mehdi Bouchami";
         public const string GitHubUrl = "https://github.com/mehdibouchami/razer-barracuda-x-battery";
         // Donation page. Empty = the "Support" menu item is hidden.
